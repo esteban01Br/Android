@@ -1,5 +1,6 @@
 package com.esteban.miformacionctma.ui.screens
 
+import android.content.ActivityNotFoundException
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
@@ -66,8 +67,10 @@ fun ElegirEvidenciaButton(onSelected: (Uri?) -> Unit) {
 @Composable
 fun CapturarEvidenciaButton(
     crearUri: () -> Uri,
-    onCaptured: (uri: Uri?, ok: Boolean) -> Unit
+    onCaptured: (uri: Uri?, ok: Boolean) -> Unit,
+    onError: (String) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var uriActual by remember { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture()
@@ -76,7 +79,12 @@ fun CapturarEvidenciaButton(
         onClick = {
             val uri = crearUri()
             uriActual = uri
-            camera.launch(uri)
+            try {
+                camera.launch(uri)
+            } catch (error: ActivityNotFoundException) {
+                eliminarArchivoTemporalSiVacio(context, uri)
+                onError("No se encontró una aplicación de cámara en el dispositivo.")
+            }
         },
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -145,6 +153,8 @@ fun EvidenciaScreen(
     val evidencias by viewModel.observarEvidencias()
         .collectAsState(initial = emptyList())
 
+    var errorCamara by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -190,13 +200,23 @@ fun EvidenciaScreen(
             crearUri = { nuevoUriEvidencia(context) },
             onCaptured = { uri, ok ->
                 if (ok && uri != null) {
+                    errorCamara = null
                     viewModel.alSeleccionar(uri)
                 } else {
                     uri?.let { eliminarArchivoTemporalSiVacio(context, it) }
                     viewModel.alCancelarCaptura()
                 }
-            }
+            },
+            onError = { errorCamara = it }
         )
+
+        errorCamara?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
 
         VistaPreviaEvidencia(uri = uiState.uri)
 
